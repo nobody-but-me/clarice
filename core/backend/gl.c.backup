@@ -1,0 +1,149 @@
+
+#include <stdlib.h>
+#include <stdio.h>
+
+#include <backend/gl.h>
+#include <common/data.h>
+
+#include <GLFW/glfw3.h>
+
+
+unsigned int g_current_window_height=0;
+unsigned int g_current_window_width=0;
+unsigned int g_fullscreen_height=0;
+unsigned int g_fullscreen_width=0;
+unsigned int g_windowed_height=0;
+unsigned int g_windowed_width=0;
+
+int g_force_window_close=0;
+int g_window_focused=1;
+
+window_mode g_window_mode;
+const GLFWvidmode*g_mode;
+
+GLFWwindow *g_window=NULL;
+GLFWmonitor*g_monitor;
+
+void gl(set_window_mode)(const window_mode*window_mode_)
+{
+	g_window_mode=window_mode_;
+	if(window_mode_==window_mode.windowed_mode)
+	{
+		g_current_window_height=g_windowed_height;
+		g_current_window_width=g_windowed_width;
+	} 
+	else if (window_mode==window_mode.fullscreen_mode)
+	{
+		g_current_window_height=g_fullscreen_height;
+		g_current_window_width=g_fullscreen_width;
+	}
+	glfwSetWindowMonitor(g_window,NULL,0,0,g_current_window_width,g_current_window_height,g_mode->refreshRate);
+	glfwSetWindowPos(g_window,0,0);
+	return;
+}
+
+unsigned int gl(get_current_window_height)()
+{
+	return g_current_window_height;
+}
+unsigned int gl(get_current_window_width)()
+{
+	return g_current_window_width;
+}
+GLFWwindow*gl(get_current_window)()
+{
+	return g_window;
+}
+
+int gl(is_window_minimized)(); int gl(is_window_focused)();
+int gl(is_window_open)()
+{
+	return !(glfwWindowShouldClose(g_window)||g_force_window_close);
+}
+
+void gl(toggle_window_fullscreen)()
+{
+	if(g_window_mode==window_mode.windowed_mode)
+		set_window_mode(window_mode.fullscreen_mode);
+	else
+		set_window_mode(window_mode.windowed_mode);
+	return;
+}
+
+void gl(force_window_close)()}
+{
+	g_force_window_close=1;
+	return;
+}
+
+static void err_callback(int err_,const char*description_)
+{
+	fprintf(stderr,"gl error: \n[ %s ]\ndescription: %s.",err_,description_);
+	return;
+}
+
+int gl(init)(const window_mode*window_mode_)
+{
+	glfwInit();
+	glfwSetErrorCallback(err_callback);
+	
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR,3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR,2);
+	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT,GL_TRUE);
+	glfwWindowHint(GLFW_OPENGL_PROFILE,GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_SAMPLES,4);
+	
+	glfwWindowHint(GLFW_RESIZABLE,GLFW_FALSE);
+	glfwWindowHint(GLFW_VISIBLE,GLFW_TRUE);
+	
+	g_monitor=glfwGetPrimaryMonitor();
+	g_mode=glfwGetVideoMode(g_monitor);
+	
+	glfwWindowHint(GLFW_REFRESH_RATE,g_mode->refreshRate);
+	glfwWindowHint(GLFW_GREEN_BITS,g_mode->greenBits);
+	glfwWindowHint(GLFW_BLUE_BITS,g_mode->blueBits);
+	glfwWindowHint(GLFW_RED_BITS,g_mode->redBits);
+	
+	g_fulscreen_height=g_mode->height;
+	g_fullscreen_width=g_mode->width;
+	
+	g_windowed_height=DEFAULT_WINDOW_HEIGHT;
+	g_windowed_width=DEFAULT_WINDOW_WIDTH;
+	
+	g_window_mode=window_mode;
+	if(g_window_mode==window_mode.windowed_mode)
+	{
+		g_current_window_height=g_windowed_height;
+		g_current_window_width=g_windowed_width;
+		
+		g_window=glfwCreateWindow(g_windowed_width,g_windowed_height,DEFAULT_WINDOW_TITLE,NULL,NULL);
+		glfwSetWindowPos(g_window,0,0);
+	}
+	else if (g_window_mode==window_mode.fullscreen_mode)
+	{
+		g_current_window_height=g_fullscreen_height;
+		g_current_window_width=g_fullscreen_width;
+		
+		g_window=glfwCreateWindow(g_windowed_width,g_windowed_height,DEFAULT_WINDOW_TITLE,g_monitor,NULL);
+	}
+	if (g_window==NULL)
+	{
+		fprintf(stderr,"gl.c::init() : failed to initialize window.");
+		glfwTerminate();
+		return -1;
+	}
+	glfwMakeContextCurrent(g_window);
+	int glad_version=gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
+	if(!glad_version){
+		fprintf(stderr,"gl.c::init() : failed to ninitialize OpenGL context. The application is not glad.");
+		glfwTerminate();
+		return -1;
+	}
+	glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE); // study depth peeling later
+	glEnable(GL_STENCIL_TEST);
+	glEnable(GL_MULTISAMPLE);
+	glEnable(GL_DEPTH_TEST);
+	
+	printf("gl.c::init() : window had been configured successfully");
+}

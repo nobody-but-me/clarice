@@ -1,0 +1,17 @@
+
+
+#ifndef GL_H
+#define GL_H
+
+#define gl(x) gl_##x
+
+#define DEFAULT_WINDOW_WIDTH 800
+#define DEFAULT_WINDOW_HEIGHT DEFAULT_WINDOW_WIDTH/4*3
+#define DEFAULT_WINDOW_TITLE "prototype"
+
+//void gl(set_window_mode)(const )
+unsigned int gl(get_current_window_height)();
+unsigned int gl(get_current_window_width)()
+
+
+#endif//GL_H
