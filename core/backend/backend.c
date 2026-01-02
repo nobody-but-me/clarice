@@ -26,7 +26,7 @@ int backend(init)(const enum window_mode window_mode_)
 {
 	if ((gl(init)(window_mode_))==-1)
 		return -1;
-	printf("backend.c::init() : backend initialized successfully.");
+	printf("backend.c::init() : backend initialized successfully.\n");
 	return 0;
 }
 

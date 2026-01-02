@@ -1,0 +1,16 @@
+
+#ifndef RENDERER_H
+#define RENDERER_H
+
+#define RECT_VERTEX_DATA {				\
+		0.0f, 1.0f, 1.0f, 0.0f, 1.0f,	\
+		1.0f, 0.0f, 1.0f, 1.0f, 0.0f,	\
+		0.0f, 0.0f, 1.0f, 0.0f, 0.0f,	\
+		
+		0.0f, 1.0f, 1.0f, 0.0f, 1.0f,	\
+		1.0f, 1.0f, 1.0f, 1.0f, 1.0f,	\
+		1.0f, 0.0f, 1.0f, 1.0f, 0.0f,	\
+	}
+#define renderer(x) rend
+
+#endif//RENDERER_H

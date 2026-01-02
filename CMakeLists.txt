@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.21)
 project(PROTOTYPE C)
 
 set(GLFW_LIB "" CACHE STRING "path to glfw statically linked library")
+set(CGLM_LIB "" CACHE STRING "path to cglm statically linked library")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 add_executable(prototype)
@@ -33,6 +34,8 @@ if (UNIX)
 endif()
 if (!GLFW_LIB)
 	message(FATAL_ERROR "statically linked GLFW library could not be found")
+elseif (!CGLM_LIB)
+	message(FATAL_ERROR "statically linked CGLM library could not be found")
 endif()
 
 find_package(OpenGL REQUIRED)
@@ -43,7 +46,7 @@ target_sources(prototype PRIVATE
 	${CMAKE_SOURCE_DIR}/core/libs/glad.c
 )
 target_compile_options(prototype PRIVATE -Wall -Werror -pedantic)
-target_link_options(prototype PUBLIC -fPIE -fPIC -lm)
+target_link_options(prototype PRIVATE -fPIE -fPIC -lm)
 
-target_link_libraries(prototype PRIVATE ${OPENGL_gl_LIBRARY} ${GLFW_LIB})
+target_link_libraries(prototype PRIVATE ${OPENGL_gl_LIBRARY} ${GLFW_LIB} ${CGLM_LIB})
 
