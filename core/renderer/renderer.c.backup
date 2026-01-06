@@ -91,7 +91,6 @@ int renderer(set_object_transform)(object*object_)
 {
 	molson(use_shader)(g_main_object_shader);
 	mat4 transform=GLM_MAT4_IDENTITY_INIT;
-	
-	glm_translate(transform,(vec3){object_->position.x,object_->ob})
+	glm_translate(transform,(vec3){object})
 }
 

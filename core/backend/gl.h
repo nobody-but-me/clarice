@@ -14,9 +14,9 @@
 
 void gl(set_window_mode)(const enum window_mode window_mode_);
 
-unsigned int gl(get_current_window_height)(void);
-unsigned int gl(get_current_window_width)(void);
-GLFWwindow*gl(get_current_window)(void);
+void gl(get_current_window_height)(unsigned int*window_height_);
+void gl(get_current_window_width)(unsigned int*window_width_);
+void gl(get_current_window)(GLFWwindow*window_);
 
 int gl(is_window_minimized)(void);
 int gl(is_window_focused)(void);

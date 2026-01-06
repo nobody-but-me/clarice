@@ -42,17 +42,20 @@ void gl(set_window_mode)(const enum window_mode window_mode_)
 	return;
 }
 
-unsigned int gl(get_current_window_height)(void)
+void gl(get_current_window_height)(unsigned int*window_height_)
 {
-	return g_current_window_height;
+	window_height_=&g_current_window_height;
+	return;
 }
-unsigned int gl(get_current_window_width)(void)
+void gl(get_current_window_width)(unsigned int*window_width_)
 {
-	return g_current_window_width;
+	window_width_=&g_current_window_width;
+	return;
 }
-GLFWwindow*gl(get_current_window)(void)
+void gl(get_current_window)(GLFWwindow*window_)
 {
-	return g_window;
+	window_=g_window;
+	return;
 }
 
 int gl(is_window_minimized)(void); int gl(is_window_focused)(void);

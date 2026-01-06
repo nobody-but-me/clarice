@@ -16,8 +16,8 @@
 	}
 #define renderer(x) renderer_##x
 
-unsigned int renderer(get_quad_vao)(void);
-unsigned int renderer(get_quad_vbo)(void);
+void renderer(get_quad_vao)(unsigned int*vao_);
+void renderer(get_quad_vbo)(unsigned int*vbo_);
 
 int renderer(init_globals)(void);
 
