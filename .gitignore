@@ -1,0 +1,8 @@
+
+# charlie
+
+*.backup
+
+# emacs
+
+*~
