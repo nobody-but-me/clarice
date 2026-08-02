@@ -9,6 +9,9 @@
 #define FONT_SPACING 2.0f
 #define FONT_SCALE 25.0f
 
+#define LEFT_MARGIN 16.0f
+#define TOP_MARGIN 16.0f
+
 char buffer[BUFFER_SIZE][BUFFER_SIZE];
 size_t buffer_size;
 
@@ -20,7 +23,7 @@ static void init_window(void)
 {
 	const int WIDTH = 800;
 	const int HEIGHT = WIDTH / 4*3;
-	InitWindow(WIDTH, HEIGHT, "Pessoa");
+	InitWindow(WIDTH, HEIGHT, "Clarice");
 	SetTargetFPS(60);
 	return;
 }
@@ -38,6 +41,27 @@ static Vector2 calculate_glyph(Font _font)
 	dirty = false;
 	
 	return text_measure;
+}
+
+// that's dumb I know sorry for that
+static inline void calculate_utf8_char(size_t *char_start, size_t *char_length, bool subsequent)
+{
+	if (subsequent)
+		*char_start = cursor_x + 1;
+	else
+		*char_start = cursor_x - 1;
+	while (*char_start > 0 && (buffer[cursor_y][*char_start] & 0xC0) == 0x80)
+	{
+		if (subsequent)
+			*char_start += 1;
+		else
+			*char_start -= 1;
+	}
+	*char_length = cursor_x - *char_start;
+	// HAHAHA I have a lot of fun
+	if (subsequent)
+		*char_length *= -1;
+	return;
 }
 
 int main(int argc, char **argv)
@@ -69,7 +93,10 @@ int main(int argc, char **argv)
 			
 			if (buffer_size + utf8_size < (BUFFER_SIZE - 1))
 			{
+				size_t length = strlen(buffer[cursor_y]);
+				memmove(buffer[cursor_y] + cursor_x + utf8_size, buffer[cursor_y] + cursor_x, length - cursor_x + 1);
 				memcpy(buffer[cursor_y] + cursor_x, utf8, utf8_size);
+				
 				buffer_size += utf8_size;
 				buffer[cursor_y][buffer_size] = '\0';
 				cursor_x += utf8_size;
@@ -79,13 +106,12 @@ int main(int argc, char **argv)
 		}
 		if (IsKeyPressed(KEY_BACKSPACE) && buffer_size > 0)
 		{
-			// that's pretty dumb, but works (for now);
-			if (buffer[cursor_y][buffer_size - 1] < 0)
-				buffer_size -= 2;
-			else
-				buffer_size--;
-			buffer[cursor_y][buffer_size] = '\0';
-			cursor_x = buffer_size;
+			size_t char_length, char_start;
+			calculate_utf8_char(&char_start, &char_length, false);
+			memmove(buffer[cursor_y] + char_start, buffer[cursor_y] + cursor_x, strlen(buffer[cursor_y]) + 1);
+			buffer_size -= char_length;
+			cursor_x = char_start;
+			
 			dirty = true;
 		}
 		if (IsKeyPressed(KEY_ENTER) || (IsKeyDown(KEY_LEFT_CONTROL) && IsKeyPressed(KEY_M)))
@@ -119,26 +145,29 @@ int main(int argc, char **argv)
 				cursor_x = buffer_size;
 				char_size = calculate_glyph(_font);
 			}
-			if (IsKeyPressed(KEY_B))
+			if (IsKeyPressed(KEY_B) || IsKeyPressed(KEY_F))
 			{
-				if (buffer[cursor_y][cursor_x - 1] < 0)
-					cursor_x -= 2;
-				else
-					cursor_x--;
+				size_t char_length, char_start;
+				if (IsKeyPressed(KEY_B) && cursor_x > 0)
+				{
+					calculate_utf8_char(&char_start, &char_length, false);
+					cursor_x = char_start;
+				}
+				else if (IsKeyPressed(KEY_F) && cursor_x < buffer_size)
+				{
+					calculate_utf8_char(&char_start, &char_length, true);
+					cursor_x += char_length;
+				}
 				char_size = calculate_glyph(_font);
 			}
 		}
-		
 		if (dirty == true)
 			char_size = calculate_glyph(_font);
-//		printf("%d\n", cursor_x);
 		BeginDrawing();
 			ClearBackground(BLACK);
 			for (int i = 0; i < lines; ++i)
-			{
-				DrawTextEx(_font, buffer[i], (Vector2){15.0f, i * FONT_SCALE}, FONT_SCALE, FONT_SPACING, WHITE);
-			}
-			DrawRectangle(char_size.x + 16.0f, FONT_SCALE * cursor_y, 16, FONT_SCALE, RED);
+				DrawTextEx(_font, buffer[i], (Vector2){15.0f, i * FONT_SCALE + TOP_MARGIN}, FONT_SCALE, FONT_SPACING, WHITE);
+			DrawRectangle(char_size.x + LEFT_MARGIN, FONT_SCALE * cursor_y + TOP_MARGIN, FONT_SPACING, FONT_SCALE, RED);
 		EndDrawing();
 	}
 	return 0;
