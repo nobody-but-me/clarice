@@ -23,7 +23,7 @@ static void init_window(void)
 {
 	const int WIDTH = 800;
 	const int HEIGHT = WIDTH / 4*3;
-	InitWindow(WIDTH, HEIGHT, "Clarice");
+	InitWindow(WIDTH, HEIGHT, "Clarice text editor");
 	SetTargetFPS(60);
 	return;
 }
@@ -36,7 +36,6 @@ static Vector2 calculate_glyph(Font _font)
 	strncpy(dest, buffer[cursor_y], cursor_x);
 	dest[length] = '\0';
 	
-//	Vector2 text_measure = MeasureTextEx(_font, buffer[cursor_y], FONT_SCALE, FONT_SPACING);
 	Vector2 text_measure = MeasureTextEx(_font, dest, FONT_SCALE, FONT_SPACING);
 	dirty = false;
 	
@@ -104,47 +103,103 @@ int main(int argc, char **argv)
 			}
 			key = GetCharPressed();
 		}
-		if (IsKeyPressed(KEY_BACKSPACE) && buffer_size > 0)
+		if (IsKeyPressed(KEY_BACKSPACE))
 		{
-			size_t char_length, char_start;
-			calculate_utf8_char(&char_start, &char_length, false);
-			memmove(buffer[cursor_y] + char_start, buffer[cursor_y] + cursor_x, strlen(buffer[cursor_y]) + 1);
-			buffer_size -= char_length;
-			cursor_x = char_start;
-			
-			dirty = true;
+			if (cursor_x > 0 && buffer_size > 0)
+			{
+				size_t char_length, char_start;
+				calculate_utf8_char(&char_start, &char_length, false);
+				memmove(buffer[cursor_y] + char_start, buffer[cursor_y] + cursor_x, strlen(buffer[cursor_y]) + 1);
+				buffer_size -= char_length;
+				cursor_x = char_start;
+				
+				dirty = true;
+			}
+			else if (cursor_x == 0 && cursor_y > 0)
+			{
+				if (buffer_size > 0)
+				{
+					// is that ugly enough for you?
+					if (strlen(buffer[cursor_y - 1]) == 0)
+					{
+						cursor_x = 0;
+						for (int i = lines; i > cursor_y; --i)
+							strcpy(buffer[i], buffer[i - 1]);
+						memmove(buffer[cursor_y - 1], buffer[cursor_y], strlen(buffer[cursor_y]) + 1);
+					} else
+					{
+						cursor_x = strlen(buffer[cursor_y - 1]);
+						for (int i = lines; i > cursor_y; --i)
+							strcpy(buffer[i], buffer[i - 1] + strlen(buffer[cursor_y - 1]));
+						memmove(buffer[cursor_y - 1] + strlen(buffer[cursor_y - 1]), buffer[cursor_y], strlen(buffer[cursor_y]) + 1);
+					}
+					buffer[cursor_y][cursor_x] = '\0';
+					lines--; cursor_y--;
+					
+					buffer_size = strlen(buffer[cursor_y]);
+					char_size = calculate_glyph(_font);
+				}
+			}
 		}
 		if (IsKeyPressed(KEY_ENTER) || (IsKeyDown(KEY_LEFT_CONTROL) && IsKeyPressed(KEY_M)))
 		{
 			if (lines < BUFFER_SIZE - 2)
 			{
-				for (int i = lines; i > cursor_y; --i)
+				if (cursor_x == buffer_size)
 				{
-					strcpy(buffer[i], buffer[i - 1]);
+					for (int i = lines; i > cursor_y; --i)
+						strcpy(buffer[i], buffer[i - 1]);
+					buffer[cursor_y + 1][0] = '\0';
+					lines++; cursor_y++;
+					buffer_size = strlen(buffer[cursor_y]);
+					cursor_x = buffer_size;
+					char_size = calculate_glyph(_font);
+				} else
+				{
+					for (int i = lines; i > cursor_y; --i)
+						strcpy(buffer[i], buffer[i - 1]);
+					memmove(buffer[cursor_y + 1], buffer[cursor_y] + cursor_x, strlen(buffer[cursor_y] + cursor_x) + 1);
+					buffer[cursor_y][cursor_x] = '\0';
+					lines++; cursor_y++;
+					
+					buffer_size = strlen(buffer[cursor_y]);
+					cursor_x = 0;
+					char_size = calculate_glyph(_font);
 				}
-				buffer[cursor_y + 1][0] = '\0';
-				lines++; cursor_y++;
-				buffer_size = strlen(buffer[cursor_y]);
-				cursor_x = buffer_size;
-				char_size = calculate_glyph(_font);
 			}
 		}
 		if (IsKeyDown(KEY_LEFT_CONTROL))
 		{
+			if (IsKeyPressed(KEY_A) && cursor_x > 0)
+			{
+				cursor_x = 0;
+				char_size = calculate_glyph(_font);
+			}
+			else if (IsKeyPressed(KEY_E) && cursor_x < buffer_size)
+			{
+				cursor_x = buffer_size;
+				char_size = calculate_glyph(_font);
+			}
+
 			if (IsKeyPressed(KEY_N) && cursor_y < lines - 1)
 			{
 				cursor_y++;
 				buffer_size = strlen(buffer[cursor_y]);
-				cursor_x = buffer_size;
+//				cursor_x = buffer_size;
+				if (cursor_x > buffer_size)
+					cursor_x = buffer_size;
 				char_size = calculate_glyph(_font);
-			}
+			}			
 			else if (IsKeyPressed(KEY_P) && cursor_y > 0)
 			{
 				cursor_y--;
 				buffer_size = strlen(buffer[cursor_y]);
-				cursor_x = buffer_size;
+//				cursor_x = buffer_size;
+				if (cursor_x > buffer_size)
+					cursor_x = buffer_size;
 				char_size = calculate_glyph(_font);
 			}
+			
 			if (IsKeyPressed(KEY_B) || IsKeyPressed(KEY_F))
 			{
 				size_t char_length, char_start;
@@ -167,7 +222,8 @@ int main(int argc, char **argv)
 			ClearBackground(BLACK);
 			for (int i = 0; i < lines; ++i)
 				DrawTextEx(_font, buffer[i], (Vector2){15.0f, i * FONT_SCALE + TOP_MARGIN}, FONT_SCALE, FONT_SPACING, WHITE);
-			DrawRectangle(char_size.x + LEFT_MARGIN, FONT_SCALE * cursor_y + TOP_MARGIN, FONT_SPACING, FONT_SCALE, RED);
+			DrawRectangle(char_size.x + LEFT_MARGIN, FONT_SCALE * cursor_y + TOP_MARGIN + FONT_SCALE - 5,
+						  MeasureTextEx(_font, "A", FONT_SCALE, FONT_SPACING).x + 5, 5, RED);
 		EndDrawing();
 	}
 	return 0;
