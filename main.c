@@ -4,13 +4,17 @@
 #include <stdio.h>
 #include <math.h>
 
+#define str(s) #s
+
 #define BUFFER_SIZE 2048
 
 #define FONT_SPACING 2.0f
 #define FONT_SCALE 25.0f
 
-#define LEFT_MARGIN 16.0f
+#define LEFT_MARGIN 15.0f
 #define TOP_MARGIN 16.0f
+
+#define LINE_NUMBERS true
 
 char buffer[BUFFER_SIZE][BUFFER_SIZE];
 size_t buffer_size;
@@ -81,7 +85,7 @@ int main(int argc, char **argv)
 	buffer_size = strlen(buffer[cursor_y]);
 	cursor_x = buffer_size;
 	
-	Vector2 char_size;
+	Vector2 char_size = calculate_glyph(_font);
 	while (!WindowShouldClose())
 	{
 		int key = GetCharPressed();
@@ -109,7 +113,7 @@ int main(int argc, char **argv)
 			{
 				size_t char_length, char_start;
 				calculate_utf8_char(&char_start, &char_length, false);
-				memmove(buffer[cursor_y] + char_start, buffer[cursor_y] + cursor_x, strlen(buffer[cursor_y]) + 1);
+				strcpy(buffer[cursor_y] + char_start, buffer[cursor_y] + cursor_x);
 				buffer_size -= char_length;
 				cursor_x = char_start;
 				
@@ -117,28 +121,17 @@ int main(int argc, char **argv)
 			}
 			else if (cursor_x == 0 && cursor_y > 0)
 			{
-				if (buffer_size > 0)
+				if (strlen(buffer[cursor_y - 1]) == 0)
 				{
-					// is that ugly enough for you?
-					if (strlen(buffer[cursor_y - 1]) == 0)
-					{
-						cursor_x = 0;
-						for (int i = lines; i > cursor_y; --i)
-							strcpy(buffer[i], buffer[i - 1]);
-						memmove(buffer[cursor_y - 1], buffer[cursor_y], strlen(buffer[cursor_y]) + 1);
-					} else
-					{
-						cursor_x = strlen(buffer[cursor_y - 1]);
-						for (int i = lines; i > cursor_y; --i)
-							strcpy(buffer[i], buffer[i - 1] + strlen(buffer[cursor_y - 1]));
-						memmove(buffer[cursor_y - 1] + strlen(buffer[cursor_y - 1]), buffer[cursor_y], strlen(buffer[cursor_y]) + 1);
-					}
-					buffer[cursor_y][cursor_x] = '\0';
-					lines--; cursor_y--;
-					
-					buffer_size = strlen(buffer[cursor_y]);
-					char_size = calculate_glyph(_font);
+					strcpy(buffer[cursor_y - 1], buffer[cursor_y]);
+					for (int i = cursor_y; i < lines - 1; ++i)
+						strcpy(buffer[i], buffer[i + 1]);
 				}
+				lines--; cursor_y--;
+				
+				buffer_size = strlen(buffer[cursor_y]);
+				cursor_x = 0;
+				char_size = calculate_glyph(_font);
 			}
 		}
 		if (IsKeyPressed(KEY_ENTER) || (IsKeyDown(KEY_LEFT_CONTROL) && IsKeyPressed(KEY_M)))
@@ -148,7 +141,12 @@ int main(int argc, char **argv)
 				if (cursor_x == buffer_size)
 				{
 					for (int i = lines; i > cursor_y; --i)
-						strcpy(buffer[i], buffer[i - 1]);
+					{
+						if (strlen(buffer[i - 1]) != 0)
+							strcpy(buffer[i], buffer[i - 1]);
+						else
+							buffer[i][0] = '\0';
+					}
 					buffer[cursor_y + 1][0] = '\0';
 					lines++; cursor_y++;
 					buffer_size = strlen(buffer[cursor_y]);
@@ -156,9 +154,15 @@ int main(int argc, char **argv)
 					char_size = calculate_glyph(_font);
 				} else
 				{
-					for (int i = lines; i > cursor_y; --i)
-						strcpy(buffer[i], buffer[i - 1]);
-					memmove(buffer[cursor_y + 1], buffer[cursor_y] + cursor_x, strlen(buffer[cursor_y] + cursor_x) + 1);
+					for (int i = lines; i > cursor_y + 1; --i)
+					{
+						if (strlen(buffer[i - 1]) != 0)
+							strcpy(buffer[i], buffer[i - 1]);
+						else
+							buffer[i][0] = '\0';
+					}
+					strcpy(buffer[cursor_y + 1], buffer[cursor_y] + cursor_x);
+					buffer[cursor_y + 1][strlen(buffer[cursor_y + 1])] = '\0';
 					buffer[cursor_y][cursor_x] = '\0';
 					lines++; cursor_y++;
 					
@@ -220,9 +224,22 @@ int main(int argc, char **argv)
 			char_size = calculate_glyph(_font);
 		BeginDrawing();
 			ClearBackground(BLACK);
+			int line_number_length;
 			for (int i = 0; i < lines; ++i)
-				DrawTextEx(_font, buffer[i], (Vector2){15.0f, i * FONT_SCALE + TOP_MARGIN}, FONT_SCALE, FONT_SPACING, WHITE);
-			DrawRectangle(char_size.x + LEFT_MARGIN, FONT_SCALE * cursor_y + TOP_MARGIN + FONT_SCALE - 5,
+			{
+				if (LINE_NUMBERS)
+				{
+					char line_number[sizeof(int) * sizeof(char)];
+					snprintf(line_number, sizeof(line_number), "%d", i);
+					DrawTextEx(_font, line_number, (Vector2){5.0f, i * FONT_SCALE + TOP_MARGIN}, FONT_SCALE, FONT_SPACING, GRAY);
+					if (i == lines - 1)
+						line_number_length = MeasureTextEx(_font, line_number, FONT_SCALE, FONT_SPACING).x;
+				}
+				DrawTextEx(_font, buffer[i], 
+						   (Vector2){LEFT_MARGIN + line_number_length, i * FONT_SCALE + TOP_MARGIN}, 
+						   FONT_SCALE, FONT_SPACING, WHITE);
+			}
+			DrawRectangle(char_size.x + LEFT_MARGIN + line_number_length, FONT_SCALE * cursor_y + TOP_MARGIN + FONT_SCALE - 5,
 						  MeasureTextEx(_font, "A", FONT_SCALE, FONT_SPACING).x + 5, 5, RED);
 		EndDrawing();
 	}
