@@ -1,4 +1,4 @@
-
+	
 #include <raylib.h>
 #include <string.h>
 #include <stdio.h>
@@ -16,6 +16,9 @@
 
 #define LINE_NUMBERS true
 
+const int WINDOW_WIDTH = 800;
+const int WINDOW_HEIGHT = WINDOW_WIDTH / 4*3;
+
 char buffer[BUFFER_SIZE][BUFFER_SIZE];
 size_t buffer_size;
 
@@ -25,10 +28,8 @@ bool dirty = false;
 
 static void init_window(void)
 {
-	const int WIDTH = 800;
-	const int HEIGHT = WIDTH / 4*3;
-	InitWindow(WIDTH, HEIGHT, "Clarice text editor");
-	SetTargetFPS(60);
+	InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Clarice text editor");
+	SetTargetFPS(120);
 	return;
 }
 
@@ -126,11 +127,17 @@ int main(int argc, char **argv)
 					strcpy(buffer[cursor_y - 1], buffer[cursor_y]);
 					for (int i = cursor_y; i < lines - 1; ++i)
 						strcpy(buffer[i], buffer[i + 1]);
+					cursor_x = 0;
+				} else
+				{
+					cursor_x = strlen(buffer[cursor_y - 1]);
+					strcpy(buffer[cursor_y - 1] + strlen(buffer[cursor_y - 1]), buffer[cursor_y]);
+					for (int i = cursor_y; i < lines - 1; ++i)
+						strcpy(buffer[i], buffer[i + 1]);
 				}
 				lines--; cursor_y--;
 				
 				buffer_size = strlen(buffer[cursor_y]);
-				cursor_x = 0;
 				char_size = calculate_glyph(_font);
 			}
 		}
@@ -189,7 +196,6 @@ int main(int argc, char **argv)
 			{
 				cursor_y++;
 				buffer_size = strlen(buffer[cursor_y]);
-//				cursor_x = buffer_size;
 				if (cursor_x > buffer_size)
 					cursor_x = buffer_size;
 				char_size = calculate_glyph(_font);
@@ -198,7 +204,6 @@ int main(int argc, char **argv)
 			{
 				cursor_y--;
 				buffer_size = strlen(buffer[cursor_y]);
-//				cursor_x = buffer_size;
 				if (cursor_x > buffer_size)
 					cursor_x = buffer_size;
 				char_size = calculate_glyph(_font);
@@ -207,15 +212,90 @@ int main(int argc, char **argv)
 			if (IsKeyPressed(KEY_B) || IsKeyPressed(KEY_F))
 			{
 				size_t char_length, char_start;
-				if (IsKeyPressed(KEY_B) && cursor_x > 0)
+				if (IsKeyPressed(KEY_B))
 				{
-					calculate_utf8_char(&char_start, &char_length, false);
-					cursor_x = char_start;
+					if (cursor_x > 0)
+					{
+						calculate_utf8_char(&char_start, &char_length, false);
+						cursor_x = char_start;
+					} else
+					{
+						cursor_y--;
+						cursor_x = strlen(buffer[cursor_y]);
+					}
 				}
 				else if (IsKeyPressed(KEY_F) && cursor_x < buffer_size)
 				{
-					calculate_utf8_char(&char_start, &char_length, true);
-					cursor_x += char_length;
+					if (cursor_x < buffer_size)
+					{
+						calculate_utf8_char(&char_start, &char_length, true);
+						cursor_x += char_length;
+					} else
+					{
+						cursor_y++;
+						cursor_x = 0;
+					}
+				}
+				char_size = calculate_glyph(_font);
+			}
+		}
+		else if (IsKeyDown(KEY_LEFT_ALT))
+		{
+			if (IsKeyPressed(KEY_B))
+			{
+				if (cursor_x != 0)
+				{
+ALT_BACK:
+					int index = cursor_x - 1;
+					for (; strchr(".-\"(; ", buffer[cursor_y][index - 1]) == NULL && index != 0;)
+					{
+						if (index >= 1)
+							--index;
+						else
+							index = 0;
+					}
+					cursor_x = index;
+				} else
+				{
+ALT_BACK_LINE:
+					if (cursor_y != 0)
+					{
+						cursor_y--; buffer_size = strlen(buffer[cursor_y]);
+						cursor_x = buffer_size;
+						if (buffer_size >= 1)
+							goto ALT_BACK;
+						else
+							goto ALT_BACK_LINE;
+					}
+				}
+				char_size = calculate_glyph(_font);
+			}
+			else if (IsKeyPressed(KEY_F))
+			{
+				if (cursor_x < buffer_size)
+				{
+ALT_FOWARD:
+					int index = cursor_x + 1;
+					for (; strchr(".-\"(,; ", buffer[cursor_y][index + 1]) == NULL && index != buffer_size;)
+					{
+						if (index <= buffer_size - 1)
+							++index;
+						else
+							index = buffer_size - 1;
+					}
+					cursor_x = index + 1;
+				} else
+				{
+ALT_FOWARD_LINE:
+					if (cursor_y < lines - 1)
+					{
+						cursor_y++; buffer_size = strlen(buffer[cursor_y]);
+						cursor_x = 0;
+						if (buffer_size >= 1)
+							goto ALT_FOWARD;
+						else
+							goto ALT_FOWARD_LINE;
+					}
 				}
 				char_size = calculate_glyph(_font);
 			}
@@ -241,6 +321,7 @@ int main(int argc, char **argv)
 			}
 			DrawRectangle(char_size.x + LEFT_MARGIN + line_number_length, FONT_SCALE * cursor_y + TOP_MARGIN + FONT_SCALE - 5,
 						  MeasureTextEx(_font, "A", FONT_SCALE, FONT_SPACING).x + 5, 5, RED);
+			DrawFPS(WINDOW_WIDTH - 50.0f, WINDOW_HEIGHT - 25.0f);
 		EndDrawing();
 	}
 	return 0;
