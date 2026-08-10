@@ -1,6 +1,7 @@
 	
 #include <raylib.h>
 #include <string.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
 
@@ -241,13 +242,50 @@ int main(int argc, char **argv)
 		}
 		else if (IsKeyDown(KEY_LEFT_ALT))
 		{
+			if (IsKeyPressed(KEY_P) && cursor_y > 0)
+			{
+				if (strlen(buffer[cursor_y - 1]) == 0)
+				{
+					strcpy(buffer[cursor_y - 1], buffer[cursor_y]);
+					buffer[cursor_y][0] = '\0';
+					cursor_y--; buffer_size = strlen(buffer[cursor_y]);
+				} else
+				{
+					char tmp[sizeof(buffer[cursor_y - 1] + 1)];
+					
+					strcpy(tmp, buffer[cursor_y - 1]);
+					strcpy(buffer[cursor_y - 1], buffer[cursor_y]);
+					strcpy(buffer[cursor_y], tmp);
+					
+					cursor_y--; buffer_size = strlen(buffer[cursor_y]);
+				}
+			}
+			else if (IsKeyPressed(KEY_N) && cursor_y < lines - 1)
+			{
+				if (strlen(buffer[cursor_y + 1]) == 0)
+				{
+					strcpy(buffer[cursor_y + 1], buffer[cursor_y]);
+					buffer[cursor_y][0] = '\0';
+					cursor_y++; buffer_size = strlen(buffer[cursor_y]);
+				} else
+				{
+					char tmp[sizeof(buffer[cursor_y + 1] + 1)];
+					
+					strcpy(tmp, buffer[cursor_y + 1]);
+					strcpy(buffer[cursor_y + 1], buffer[cursor_y]);
+					strcpy(buffer[cursor_y], tmp);
+					
+					cursor_y++; buffer_size = strlen(buffer[cursor_y]);
+				}
+			}
+			
 			if (IsKeyPressed(KEY_B))
 			{
 				if (cursor_x != 0)
 				{
 ALT_BACK:
 					int index = cursor_x - 1;
-					for (; strchr(".-\"(; ", buffer[cursor_y][index - 1]) == NULL && index != 0;)
+					for (; strchr("#.-\"(; ", buffer[cursor_y][index - 1]) == NULL && index != 0;)
 					{
 						if (index >= 1)
 							--index;
@@ -276,7 +314,7 @@ ALT_BACK_LINE:
 				{
 ALT_FOWARD:
 					int index = cursor_x + 1;
-					for (; strchr(".-\"(,; ", buffer[cursor_y][index + 1]) == NULL && index != buffer_size;)
+					for (; strchr("#.-\"(,; ", buffer[cursor_y][index + 1]) == NULL && index != buffer_size;)
 					{
 						if (index <= buffer_size - 1)
 							++index;
@@ -302,25 +340,35 @@ ALT_FOWARD_LINE:
 		}
 		if (dirty == true)
 			char_size = calculate_glyph(_font);
+		
+// drawing
+		Camera2D camera = { 0 };
+		camera.target = (Vector2){WINDOW_WIDTH / 2.0f, /*WINDOW_HEIGHT / 2.0f*/ 0.0f + cursor_y * FONT_SCALE};
+		camera.offset = (Vector2){ WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f };
+		camera.rotation = 0.0f;
+		camera.zoom = 1.0f;
+		
 		BeginDrawing();
 			ClearBackground(BLACK);
-			int line_number_length;
-			for (int i = 0; i < lines; ++i)
-			{
-				if (LINE_NUMBERS)
+			BeginMode2D(camera);
+				int line_number_length;
+				for (int i = 0; i < lines; ++i)
 				{
-					char line_number[sizeof(int) * sizeof(char)];
-					snprintf(line_number, sizeof(line_number), "%d", i);
-					DrawTextEx(_font, line_number, (Vector2){5.0f, i * FONT_SCALE + TOP_MARGIN}, FONT_SCALE, FONT_SPACING, GRAY);
-					if (i == lines - 1)
-						line_number_length = MeasureTextEx(_font, line_number, FONT_SCALE, FONT_SPACING).x;
+					if (LINE_NUMBERS)
+					{
+						char line_number[sizeof(int) * sizeof(char)];
+						snprintf(line_number, sizeof(line_number), "%d", i);
+						DrawTextEx(_font, line_number, (Vector2){5.0f, i * FONT_SCALE + TOP_MARGIN}, FONT_SCALE, FONT_SPACING, GRAY);
+						if (i == lines - 1)
+							line_number_length = MeasureTextEx(_font, line_number, FONT_SCALE, FONT_SPACING).x;
+					}
+					DrawTextEx(_font, buffer[i], 
+							   (Vector2){LEFT_MARGIN + line_number_length, i * FONT_SCALE + TOP_MARGIN}, 
+							   FONT_SCALE, FONT_SPACING, WHITE);
 				}
-				DrawTextEx(_font, buffer[i], 
-						   (Vector2){LEFT_MARGIN + line_number_length, i * FONT_SCALE + TOP_MARGIN}, 
-						   FONT_SCALE, FONT_SPACING, WHITE);
-			}
-			DrawRectangle(char_size.x + LEFT_MARGIN + line_number_length, FONT_SCALE * cursor_y + TOP_MARGIN + FONT_SCALE - 5,
-						  MeasureTextEx(_font, "A", FONT_SCALE, FONT_SPACING).x + 5, 5, RED);
+				DrawRectangle(char_size.x + LEFT_MARGIN + line_number_length, FONT_SCALE * cursor_y + TOP_MARGIN + FONT_SCALE - 5,
+							  MeasureTextEx(_font, "A", FONT_SCALE, FONT_SPACING).x + 5, 5, RED);
+			EndMode2D();
 			DrawFPS(WINDOW_WIDTH - 50.0f, WINDOW_HEIGHT - 25.0f);
 		EndDrawing();
 	}
