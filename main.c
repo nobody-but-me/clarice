@@ -15,10 +15,7 @@
 
 #define BOTTOM_MARGIN 15.0f
 #define LEFT_MARGIN 15.0f
-#define TOP_MARGIN 5.0f
-
-#define FONT_SPACING 2.0f
-#define FONT_SCALE 24.0f
+#define TOP_MARGIN 15.0f
 
 #define LINE_NUMBERS true
 #define TAB_SIZE 4
@@ -33,12 +30,91 @@ typedef struct
 
 typedef struct
 {
+	char *current_file;
+	
+	int font_codepoints[256];
+	int font_count;
+	
 	size_t capacity;
 	int current_line, lines;
 	text_buffer *gbs;
 	
 	Font editor_font;
 } editor;
+
+float FONT_SPACING = 2.0f;
+float FONT_SCALE = 24.0f;
+
+
+#define TEXT_CHECK_SIZE 64 * 1024
+static bool IsValidUTF8(const unsigned char *data, size_t size)
+{
+	size_t i = 0;
+	while (i < size)
+	{
+		unsigned char c = data[i];
+		if (c <= 0x7F) { i++; continue; }	
+		if (c >= 0xC2 && c <= 0xDF)
+		{
+			if (i + 1 >= size) return false;
+			if ((data[i + 1] & 0xC0) != 0x80)
+				return false;
+			i += 2;
+			continue;
+		}
+		if (c >= 0xE0 && c <= 0xEF)
+		{
+			if (i + 2 >= size) return false;
+			unsigned char c1 = data[i + 1];
+			unsigned char c2 = data[i + 2];
+			if ((c1 & 0xC0) != 0x80 ||
+				(c2 & 0XC0) != 0x80)
+				return false;
+			if (c == 0xE0 && c1 < 0xA0) return false;
+			if (c == 0xED && c1 < 0xA0) return false;
+			i += 3;
+			continue;
+		}
+		if (c >= 0xF0 && c <= 0xF4)
+		{
+			if (i + 3 >= size) return false;
+			unsigned char c1 = data[i + 1];
+			unsigned char c2 = data[i + 2];
+			unsigned char c3 = data[i + 3];
+			if ((c1 & 0xC0) != 0x80 ||
+				(c2 & 0xC0) != 0x80 ||
+				(c3 & 0xC0) != 0x80)
+				return false;
+			if (c == 0xF0 && c1 < 0x80) return false;
+			if (c == 0xF4 && c1 >= 0x90) return false;
+			i += 4;
+			continue;
+		}
+		return false;
+	}
+	return true;
+}
+static bool IsTextBytes(const unsigned char *data, size_t size)
+{
+	for (size_t i = 0; i < size; i++)
+	{
+		unsigned char c = data[i];
+		if (c == 0x00) return false;
+		if (c < 0x20 && c != '\t' &&
+			c != '\n' && c != '\r') return false;
+	}
+	return IsValidUTF8(data, size);
+}
+bool IsTextFile(const char *filename)
+{
+	FILE *file = fopen(filename, "rb");
+	if (file == NULL) return false;
+	unsigned char buffer[TEXT_CHECK_SIZE];
+	size_t bytesRead = fread(buffer, 1, sizeof(buffer), file); fclose(file);
+	if (bytesRead == 0) return true;
+	return IsTextBytes(buffer, bytesRead);
+}
+
 
 static Vector2 calculate_glyph(text_buffer *_gap_buffer, Font _font)
 {
@@ -81,9 +157,11 @@ int gb_physical_position(text_buffer *_gap_buffer, int _logical)
 }
 
 void gb_grow(text_buffer *_gap_buffer, size_t _new_capacity);
+void gb_free(editor *_editor);
 
 void gb_init(editor *_editor, size_t _capacity)
 {
+	_editor->capacity = _capacity;
 	_editor->gbs = malloc(_capacity * sizeof(text_buffer));
 	if (_editor->gbs == NULL)
 	{
@@ -108,6 +186,9 @@ void gb_free(editor *_editor)
 		_editor->gbs[i].capacity = 0;
 		_editor->gbs[i].gap_end = 0;
 	}
+	UnloadFont(_editor->editor_font);
+//	if (_editor->current_file != NULL)
+//		free(_editor->current_file);
 	return;
 }
 
@@ -241,11 +322,31 @@ void gb_insert_string(text_buffer *_gap_buffer, const char *_string)
 	return;
 }
 
+void gb_grow_lines(editor *_editor)
+{
+	text_buffer *tmp = realloc(_editor->gbs, _editor->capacity * 2 * sizeof(text_buffer));
+	if (tmp == NULL)
+	{
+		fprintf(stderr, "failed to reallocate more memory for lines.\n");
+		exit(EXIT_FAILURE);
+		gb_free(_editor);
+		return;
+	}
+	_editor->gbs = tmp;
+	return;
+}
+
 char *gb_get_buffer(const text_buffer *_gap_buffer);
 void gb_insert_line(editor *_editor)
 {
-	// too many bad code
+	// too much bad code help me
 	_editor->lines++;
+	if (_editor->lines >= _editor->capacity)
+	{
+		fprintf(stderr, "increasing line capacity.\n");
+		gb_grow_lines(_editor);
+	}
+	
 	memmove(&_editor->gbs[_editor->current_line + 1],
 		&_editor->gbs[_editor->current_line], (_editor->lines - _editor->current_line) * sizeof(text_buffer));
 	_editor->current_line++;
@@ -314,16 +415,28 @@ char *gb_get_buffer(const text_buffer *_gap_buffer)
 
 void init_font(editor *_editor)
 {
-	int count = 0; int codepoints[256];
 	for (int i = 32; i <= 255; ++i)
-		codepoints[count++] = i;
-	_editor->editor_font = LoadFontEx("./mechanical.otf", 24, codepoints, count);
+		_editor->font_codepoints[_editor->font_count++] = i;
+	_editor->editor_font = LoadFontEx("./mechanical.otf", FONT_SCALE, _editor->font_codepoints, _editor->font_count);
 	if (!IsFontValid(_editor->editor_font))
 	{
 		fprintf(stderr, "invalid font.\n");
 		exit(EXIT_FAILURE);
 	}
+	SetTextureFilter(_editor->editor_font.texture, TEXTURE_FILTER_BILINEAR);
 	return;
+}
+int reload_font(editor *_editor)
+{
+	UnloadFont(_editor->editor_font);
+	_editor->editor_font = LoadFontEx("./mechanical.otf", FONT_SCALE, _editor->font_codepoints, _editor->font_count);
+	if (!IsFontValid(_editor->editor_font))
+	{
+		fprintf(stderr, "failed to reload editor font.\n");
+		return -1;
+	}
+	SetTextureFilter(_editor->editor_font.texture, TEXTURE_FILTER_BILINEAR);
+	return 0;
 }
 
 void init_window(void)
@@ -337,9 +450,12 @@ void init_window(void)
 void cursor_rendering(editor *_editor, Font _font)
 {
 	Vector2 char_size = calculate_glyph(&_editor->gbs[_editor->current_line], _font);
-	DrawRectangle(char_size.x,
-		FONT_SCALE * _editor->current_line + (FONT_SCALE),
-		MeasureTextEx(_font, "W", FONT_SCALE, FONT_SPACING).x + 5, (FONT_SCALE / 3), RED);
+	float length_x = MeasureTextEx(_font, "W", FONT_SCALE, FONT_SPACING).x + 4.0f;
+	float length_y = (FONT_SCALE / 3);
+	
+	DrawRectangle(LEFT_MARGIN + char_size.x,
+		TOP_MARGIN + FONT_SCALE * _editor->current_line + (length_y * 2) + 2.0f,
+		length_x, length_y, RED);
 //		((MeasureTextEx(_font, "A", FONT_SCALE, FONT_SPACING).x + 5) / 3), FONT_SCALE, RED);
 	return;
 }
@@ -352,7 +468,7 @@ void text_rendering(editor *_editor, Font _font)
 		b = gb_get_buffer(&_editor->gbs[i]);
 		if (b == NULL)
 			break;
-		DrawTextEx(_font, b, (Vector2){0.0f, 5.0f + i * FONT_SCALE}, FONT_SCALE, FONT_SPACING, BLACK);
+		DrawTextEx(_font, b, (Vector2){LEFT_MARGIN, TOP_MARGIN + i * FONT_SCALE}, FONT_SCALE, FONT_SPACING, BLACK);
 		free(b);
 	}
 	return;
@@ -376,10 +492,23 @@ void input_processing(editor *_editor)
 		gb_backspace(_editor);
 	if (IsKeyPressed(KEY_ENTER))
 		gb_insert_line(_editor);
+	if (IsKeyPressed(KEY_TAB))
+		gb_insert_string(&_editor->gbs[_editor->current_line], "    ");
 	
 // control keys
 	if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL))
 	{
+		if (IsKeyPressed(KEY_EQUAL) && (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)))
+		{
+			FONT_SCALE += (FONT_SCALE / 4);
+			reload_font(_editor);
+		}
+		if (IsKeyPressed(KEY_MINUS))
+		{
+			FONT_SCALE -= (FONT_SCALE / 4);
+			reload_font(_editor);
+		}
+		
 		if (IsKeyPressed(KEY_M))
 			gb_insert_line(_editor);
 		
@@ -418,6 +547,88 @@ void input_processing(editor *_editor)
 			free(b);
 		}
 	}
+	else if (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT))
+	{
+		if (IsKeyPressed(KEY_B))
+		{
+			text_buffer *current_line = &_editor->gbs[_editor->current_line];
+			int index = _editor->gbs[_editor->current_line].gap_start;
+			if (index > 0)
+			{
+				for (; strchr("#.-\"'/\\(; ", current_line->buffer[index - 2]) == NULL && index > 0;)
+					--index;
+				gb_move_to_index(current_line, index - 1);
+			}
+			else if (index == 0 && _editor->current_line > 0)
+			{
+				_editor->current_line--;
+				current_line = &_editor->gbs[_editor->current_line];
+				gb_move_to_index(current_line, gb_size(current_line));
+			}
+		}
+		else if (IsKeyPressed(KEY_F))
+		{
+			text_buffer *current_line = &_editor->gbs[_editor->current_line];
+			int index = _editor->gbs[_editor->current_line].gap_start;
+			if (index < gb_size(current_line))
+			{
+				for (; strchr("#.-\"'/\\(; ", current_line->buffer[index + 2]) == NULL && index < gb_size(current_line);)
+					++index;
+				gb_move_to_index(current_line, index + 2);
+			}
+			else if (index == gb_size(current_line) && _editor->current_line < _editor->lines)
+			{
+				_editor->current_line++;
+				current_line = &_editor->gbs[_editor->current_line];
+				gb_move_to_index(current_line, 0);
+			}
+		}
+	}
+	return;
+}
+
+void open_file(const char *_filepath, editor *_editor)
+{
+	FILE *file = fopen(_filepath, "r");
+	if (file == NULL)
+	{
+		fprintf(stderr, "'%s' file not found.\n", _filepath);
+		exit(EXIT_FAILURE);
+		return;
+	}
+	char *tmp = (char*)malloc(BUFFER_SIZE);
+	if (tmp == NULL)
+	{
+		fprintf(stderr, "failed to allocate memory for tmp buffer.\n");
+		exit(EXIT_FAILURE);
+		return;
+	}
+	gb_move_to_index(&_editor->gbs[0], 0);
+	_editor->current_line = 0;
+	while (fgets(tmp, BUFFER_SIZE, file) != NULL)
+	{
+		tmp[strcspn(tmp, "\n")] = '\0';
+		
+		gb_insert_string(&_editor->gbs[_editor->current_line], tmp);
+		gb_insert_line(_editor);
+//		printf("%s.\n", tmp);
+	}
+	gb_move_to_index(&_editor->gbs[0], gb_size(&_editor->gbs[0]));
+	_editor->current_line = 0;
+	free(tmp);
+	return;
+}
+
+void dropped_file_processing(editor *_editor)
+{
+	if (IsFileDropped())
+	{
+		FilePathList dropped_files = LoadDroppedFiles();
+		if (IsTextFile(dropped_files.paths[0]))
+//			printf("%s.\n", dropped_files.paths[0]);
+			open_file(dropped_files.paths[0], _editor);
+		UnloadDroppedFiles(dropped_files);
+	}
 	return;
 }
 
@@ -425,6 +636,7 @@ void main_loop(editor *_editor)
 {
 	while (!WindowShouldClose())
 	{
+		dropped_file_processing(_editor);
 		input_processing(_editor);
 		BeginDrawing();
 			ClearBackground(WHITE);
@@ -432,20 +644,18 @@ void main_loop(editor *_editor)
 			cursor_rendering(_editor, _editor->editor_font);
 		EndDrawing();
 	}
-	EndDrawing();
 	return;
 }
 
 int main(int argc, char**argv)
 {
-	printf("Hello, Clarice.\n");
-	editor e;
+	editor e; gb_init(&e, BUFFER_SIZE);
 	
-	gb_init(&e, BUFFER_SIZE);
 	const char *base_text = "Hello, Clarice.";
 	gb_insert_string(&e.gbs[e.current_line], base_text);
 	
 	init_window();
+
 	init_font(&e);
 	
 	main_loop(&e);
