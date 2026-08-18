@@ -4,6 +4,8 @@
 #include <raylib.h>
 #include <string.h>
 
+#include <ctype.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -30,7 +32,8 @@ typedef struct
 
 typedef struct
 {
-	char *current_file;
+//	char *current_file;
+	Camera2D camera;
 	
 	int font_codepoints[256];
 	int font_count;
@@ -172,6 +175,10 @@ void gb_init(editor *_editor, size_t _capacity)
 	_editor->gbs[0].initialized = true;
 	_editor->current_line = 0;
 	_editor->lines = 0;
+	
+	_editor->camera.target = (Vector2){WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f};
+	_editor->camera.offset = (Vector2){ WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f };
+	_editor->camera.rotation = 0.0f; _editor->camera.zoom = 1.0f;
 	return;
 }
 
@@ -199,6 +206,14 @@ size_t gb_size(const text_buffer *_gap_buffer)
 size_t gb_length(const text_buffer *_gap_buffer)
 {
 	return strlen(_gap_buffer->buffer);
+}
+
+size_t gb_get_screen_y(void)
+{
+	size_t s = 0;
+	for (size_t i = 0; (i * FONT_SCALE + TOP_MARGIN) < (WINDOW_HEIGHT - FONT_SCALE - BOTTOM_MARGIN); ++i)
+		s++;
+	return s;
 }
 
 void gb_move_to_index(text_buffer *_gap_buffer, int _index);
@@ -413,6 +428,12 @@ char *gb_get_buffer(const text_buffer *_gap_buffer)
 	return result;
 }
 
+void center_screen_cursor(editor *_editor)
+{
+	_editor->camera.target.y = _editor->current_line * FONT_SCALE;
+	return;
+}
+
 void init_font(editor *_editor)
 {
 	for (int i = 32; i <= 255; ++i)
@@ -509,6 +530,42 @@ void input_processing(editor *_editor)
 			reload_font(_editor);
 		}
 		
+		if (IsKeyPressed(KEY_C))
+		{
+			/// I have a lot of fun writing bad code that works
+			text_buffer *current_line = &_editor->gbs[_editor->current_line];
+			if (current_line->gap_start == gb_size(current_line))
+				return;
+			char c = 0;
+			if (current_line->gap_start != 0)
+			{
+				if ((strchr(".\"\\( ", current_line->buffer[current_line->gap_start]) != NULL &&
+					!isupper(current_line->buffer[current_line->gap_start + 1])))
+				{
+					c = toupper(current_line->buffer[current_line->gap_start + 1]);
+					gb_move_right(current_line);
+					goto CAPITALIZE;
+				}
+				if ((strchr(".\"\\( ", current_line->buffer[current_line->gap_start - 1]) != NULL &&
+					!isupper(current_line->buffer[current_line->gap_start])))
+				{
+					c = toupper(current_line->buffer[current_line->gap_start]);
+CAPITALIZE:
+					gb_move_right(current_line);
+					gb_backspace(_editor);
+					gb_insert(_editor, c);
+					goto ALT_FOWARD;
+				}
+			} else
+			{
+				if (!isupper(current_line->buffer[current_line->gap_start]))
+				{
+					c = toupper(current_line->buffer[current_line->gap_start]);
+					goto CAPITALIZE;
+				}
+			}
+		}
+		
 		if (IsKeyPressed(KEY_M))
 			gb_insert_line(_editor);
 		
@@ -530,27 +587,42 @@ void input_processing(editor *_editor)
 		
 		if (IsKeyPressed(KEY_B))
 		{
-			char *b = gb_get_buffer(&_editor->gbs[_editor->current_line]);
-			int cursor_x = _editor->gbs[_editor->current_line].gap_start;
-			size_t char_length;
-			calculate_utf8_char(_editor, b, &char_length, false);
-			gb_move_to_index(&_editor->gbs[_editor->current_line], (cursor_x - char_length));
-			free(b);
+			if (_editor->gbs[_editor->current_line].gap_start == 0)
+			{
+				gb_move_up(_editor);
+				gb_move_to_index(&_editor->gbs[_editor->current_line], gb_size(&_editor->gbs[_editor->current_line]));
+			} else
+			{
+				char *b = gb_get_buffer(&_editor->gbs[_editor->current_line]);
+				int cursor_x = _editor->gbs[_editor->current_line].gap_start;
+				size_t char_length;
+				calculate_utf8_char(_editor, b, &char_length, false);
+				gb_move_to_index(&_editor->gbs[_editor->current_line], (cursor_x - char_length));
+				free(b);
+			}
 		}
 		else if (IsKeyPressed(KEY_F))
 		{
-			char *b = gb_get_buffer(&_editor->gbs[_editor->current_line]);
-			int cursor_x = _editor->gbs[_editor->current_line].gap_start;
-			size_t char_length;
-			calculate_utf8_char(_editor, b, &char_length, true);
-			gb_move_to_index(&_editor->gbs[_editor->current_line], (cursor_x + char_length));
-			free(b);
+			if (_editor->gbs[_editor->current_line].gap_start == gb_size(&_editor->gbs[_editor->current_line]))
+			{
+				gb_move_down(_editor);
+				gb_move_to_index(&_editor->gbs[_editor->current_line], 0);
+			} else
+			{
+				char *b = gb_get_buffer(&_editor->gbs[_editor->current_line]);
+				int cursor_x = _editor->gbs[_editor->current_line].gap_start;
+				size_t char_length;
+				calculate_utf8_char(_editor, b, &char_length, true);
+				gb_move_to_index(&_editor->gbs[_editor->current_line], (cursor_x + char_length));
+				free(b);
+			}
 		}
 	}
 	else if (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT))
 	{
 		if (IsKeyPressed(KEY_B))
 		{
+//ALT_BACKWARDS:
 			text_buffer *current_line = &_editor->gbs[_editor->current_line];
 			int index = _editor->gbs[_editor->current_line].gap_start;
 			if (index > 0)
@@ -568,6 +640,7 @@ void input_processing(editor *_editor)
 		}
 		else if (IsKeyPressed(KEY_F))
 		{
+ALT_FOWARD:
 			text_buffer *current_line = &_editor->gbs[_editor->current_line];
 			int index = _editor->gbs[_editor->current_line].gap_start;
 			if (index < gb_size(current_line))
@@ -608,7 +681,23 @@ void open_file(const char *_filepath, editor *_editor)
 	while (fgets(tmp, BUFFER_SIZE, file) != NULL)
 	{
 		tmp[strcspn(tmp, "\n")] = '\0';
-		
+		for (int i = 0; tmp[i] != '\0'; ++i)
+		{
+			if (tmp[i] == '	') // just because of charlie =]
+			{
+				if ((strlen(tmp) + TAB_SIZE - 1) < BUFFER_SIZE - 1)
+				{
+					for (int j = strlen(tmp); j >= i; --j)
+						tmp[j + TAB_SIZE - 1] = tmp[j];
+					// hardcoded idc
+					tmp[i]     = ' ';
+					tmp[i + 1] = ' ';
+					tmp[i + 2] = ' ';
+					tmp[i + 3] = ' ';
+					i += TAB_SIZE;
+				}
+			}
+		}
 		gb_insert_string(&_editor->gbs[_editor->current_line], tmp);
 		gb_insert_line(_editor);
 //		printf("%s.\n", tmp);
@@ -638,10 +727,16 @@ void main_loop(editor *_editor)
 	{
 		dropped_file_processing(_editor);
 		input_processing(_editor);
+		
+		if (_editor->current_line == gb_get_screen_y())
+			center_screen_cursor(_editor);
+		
 		BeginDrawing();
 			ClearBackground(WHITE);
-			text_rendering(_editor, _editor->editor_font);
-			cursor_rendering(_editor, _editor->editor_font);
+			BeginMode2D(_editor->camera);
+				text_rendering(_editor, _editor->editor_font);
+				cursor_rendering(_editor, _editor->editor_font);
+			EndMode2D();
 		EndDrawing();
 	}
 	return;
