@@ -339,9 +339,7 @@ int main(int argc, char **argv)
 			}
 			
 			if (IsKeyPressed(KEY_L))
-			{
 				camera.target.y = cursor_y * FONT_SCALE;
-			}
 			
 			if (IsKeyPressed(KEY_A) && cursor_x > 0)
 			{

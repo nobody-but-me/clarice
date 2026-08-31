@@ -11,5 +11,8 @@ target_sources(clarice PRIVATE ${CMAKE_SOURCE_DIR}/main.c)
 
 target_include_directories(clarice PRIVATE ${CMAKE_SOURCE_DIR}/libs/raylib/src/)
 
+add_compile_options(-fsanitize=address)
+add_link_options(-fsanitize=address)
+
 target_compile_options(clarice PRIVATE -Wall -Werror -pedantic -Wno-format -Wno-unused-function)
 target_link_libraries(clarice PRIVATE ${CMAKE_SOURCE_DIR}/libs/raylib/src/libraylib.a m GL pthread dl rt X11)
