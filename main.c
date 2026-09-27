@@ -136,7 +136,8 @@ static bool IsTextBytes(const unsigned char *data, size_t size)
         unsigned char c = data[i];
         if (c == 0x00) return false;
         if (c < 0x20 && c != '\t' &&
-            c != '\n' && c != '\r') return false;
+            c != '\n' && c != '\r')
+            return false;
     }
     return IsValidUTF8(data, size);
 }
@@ -183,12 +184,6 @@ static void calculate_utf8_char(editor *_editor, const char *_string, size_t *_c
 
 int gb_at(text_buffer *_gap_buffer, int _logical)
 {
-/*
-    int gap_size = _gap_buffer->gap_end - _gap_buffer->gap_start;
-    if (_logical < _gap_buffer->gap_start)
-        return _logical;
-    return _logical + gap_size;
-*/
     if (_logical < _gap_buffer->gap_start)
         return _gap_buffer->buffer[_logical];
     return _gap_buffer->buffer[_logical + (_gap_buffer->gap_end - _gap_buffer->gap_start)];
@@ -370,9 +365,8 @@ void gb_grow(text_buffer *_gap_buffer, size_t _new_capacity)
     _gap_buffer->buffer = new_buffer;
     return;
 }
-void gb_insert(editor *_editor, char c)
+void gb_insert(text_buffer *_gap_buffer, char c)
 {
-    text_buffer *_gap_buffer = &_editor->gbs[_editor->current_line];
     if (_gap_buffer->gap_start == _gap_buffer->gap_end)
     {
         fprintf(stderr, "increasing gap size.\n");
@@ -496,7 +490,7 @@ void center_screen_cursor(editor *_editor)
     text_buffer *current_line = &_editor->gbs[_editor->current_line];
     Vector2 char_size = calculate_glyph(_editor->gbs[_editor->current_line].buffer, _editor->gbs[_editor->current_line].gap_start, _editor->editor_font);
     if (current_line->gap_start > gb_get_screen_x() + LEFT_MARGIN)
-        _editor->camera.target.x = lerp(_editor->camera.target.x, LEFT_MARGIN + char_size.x, 0.3f);
+        _editor->camera.target.x = lerp(_editor->camera.target.x, LEFT_MARGIN + LINE_NUMBER_MARGIN + char_size.x, 0.3f);
     else
         _editor->camera.target.x = lerp(_editor->camera.target.x, (INITIAL_WINDOW_WIDTH / 2.0f), 0.3f);
         
@@ -532,7 +526,7 @@ int reload_font(editor *_editor)
 
 void init_window(void)
 {
-    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Clarice");
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Clarice Text Editor");
     SetWindowState(FLAG_WINDOW_RESIZABLE);
     SetExitKey(KEY_NULL);
     SetTargetFPS(60);
@@ -542,13 +536,12 @@ void init_window(void)
 void cursor_rendering(editor *_editor, Font _font)
 {
     Vector2 char_size = calculate_glyph(_editor->gbs[_editor->current_line].buffer, _editor->gbs[_editor->current_line].gap_start, _font);
-    float length_x = MeasureTextEx(_font, "W", FONT_SCALE, FONT_SPACING).x + 4.0f;
+    float length_x = MeasureTextEx(_font, "W", FONT_SCALE, FONT_SPACING).x;
     float length_y = (FONT_SCALE / 3);
     
     DrawRectangle(LEFT_MARGIN + LINE_NUMBER_MARGIN + char_size.x,
         TOP_MARGIN + FONT_SCALE * _editor->current_line + (length_y * 2) + (0.09f * FONT_SCALE),
-        length_x, length_y, RED);
-//        ((MeasureTextEx(_font, "A", FONT_SCALE, FONT_SPACING).x + 5) / 3), FONT_SCALE, RED);
+        length_x + 4.0f, length_y, RED);
     return;
 }
 
@@ -560,6 +553,21 @@ void text_rendering(editor *_editor, Font _font)
         b = gb_get_buffer(&_editor->gbs[i]);
         if (b == NULL)
             break;
+/*
+//        printf("%zu.\n", strlen(b));
+        char expanded[strlen(b) + 1];
+        size_t j = 0;
+        for (size_t y = 0; b[y] != '\0' && j < strlen(b); y++)
+        {
+            if (b[y] == '\t')
+                for (int k = 0; k < TAB_SIZE && j < strlen(b); k++)
+                    expanded[j++] = ' ';
+            else
+                expanded[j++] = b[y];
+        }
+        expanded[j] = '\0';
+//        printf("%s\n", expanded);
+*/
         DrawTextEx(_font, b, (Vector2){LEFT_MARGIN + LINE_NUMBER_MARGIN, TOP_MARGIN + i * FONT_SCALE}, FONT_SCALE, FONT_SPACING, BLACK);
         
         if (LINE_NUMBERS)
@@ -581,9 +589,6 @@ void gui_rendering(editor *_editor, editor *_searching_e, Font _font)
     DrawRectangle(0.0f, WINDOW_HEIGHT - FONT_SCALE - 5.0f, WINDOW_WIDTH, BAR_SCALE, RED);
     if (current_mode == NORMAL_MODE)
     {
-/*
-    int rlength = snprintf(rstatus, sizeof(rstatus), "%s", g_Configuration.syntax ? g_Configuration.syntax->filetype : " no syntax ");
-    */
         char status[150];//, rstatus[100];
         float lines_percentage = 0.0f;
         if (_editor->lines > 0)
@@ -594,7 +599,7 @@ void gui_rendering(editor *_editor, editor *_searching_e, Font _font)
         
         snprintf(status, sizeof(status), "[%s]%s (%.1f%%)[line %u/%u][column %u/%u] ",
                             _editor->current_file ? filename : "New File",
-                            _editor->dirty ? " (modified) " : "",
+                            (_editor->dirty > 0) ? " (modified)" : "",
                             lines_percentage,
                             _editor->current_line, _editor->lines,
                             _editor->gbs[_editor->current_line].gap_start, gb_size(&_editor->gbs[_editor->current_line]) );
@@ -603,10 +608,17 @@ void gui_rendering(editor *_editor, editor *_searching_e, Font _font)
             (Vector2){0.0f, WINDOW_HEIGHT - FONT_SCALE}, FONT_SCALE, FONT_SPACING, WHITE);
     } else
     {
+        const char *search_text_prefix = "Search for: %s";
         char *b = gb_get_buffer(&_searching_e->gbs[0]);
-        if (b != NULL)
+        size_t length = strlen(b) + strlen(search_text_prefix) + 1;
+        
+        char final_buffer[length];
+        snprintf(final_buffer, length, search_text_prefix, b);
+        final_buffer[length] = '\0';
+        
+        if (b != NULL && final_buffer[0] != '\0')
         {
-            DrawTextEx(_font, b, (Vector2){0.0f, WINDOW_HEIGHT - FONT_SCALE}, FONT_SCALE, FONT_SPACING, WHITE);
+            DrawTextEx(_font, final_buffer, (Vector2){0.0f, WINDOW_HEIGHT - FONT_SCALE}, FONT_SCALE, FONT_SPACING, WHITE);
             free(b);
         }
     }
@@ -773,7 +785,10 @@ void input_processing(editor *_editor, editor *_searching_e)
         if (IsKeyPressed(KEY_S))
             save_file(_editor->current_file, _editor);
         if (IsKeyPressed(KEY_DELETE))
+        {
             gb_clean_line(&_editor->gbs[_editor->current_line]);
+            _editor->dirty++;
+        }
         
         x++;
         if (x >= 25)
@@ -793,22 +808,55 @@ void input_processing(editor *_editor, editor *_searching_e)
             gb_insert_string(&_editor->gbs[_editor->current_line], utf8);
             
             key = GetCharPressed();
+            _editor->dirty++;
         }
     }
     
     if (current_mode == NORMAL_MODE)
     {
         if (IsKeyPressed(KEY_BACKSPACE))
+        {
             gb_backspace(_editor);
+            _editor->dirty++;
+        }
         if (IsKeyPressed(KEY_ENTER))
+        {
             gb_insert_line(_editor);
+            _editor->dirty++;
+        }
         if (IsKeyPressed(KEY_TAB))
-            gb_insert_string(&_editor->gbs[_editor->current_line], "    ");
+        {
+            for (int i = 0; i < TAB_SIZE; ++i)
+                gb_insert(&_editor->gbs[_editor->current_line], ' ');
+            _editor->dirty++;
+        }
     }
     
 // control keys
     if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL))
     {
+        if (IsKeyPressed(KEY_BACKSPACE) && current_mode == NORMAL_MODE)
+        {
+            int i = _editor->gbs[_editor->current_line].gap_start;
+            if (_editor->gbs[_editor->current_line].buffer[i] == ' ')
+            {
+                while (_editor->gbs[_editor->current_line].buffer[i - 1] == ' ' && i > 0)
+                {
+                    gb_backspace(_editor);
+                    i--;
+                }
+            } else
+            {
+//                while (_editor->gbs[_editor->current_line].buffer[i - 1] != ' ' && i > 0)
+                while (strchr("[]{}*.\"\\() ", _editor->gbs[_editor->current_line].buffer[i - 1]) == NULL && i > 0)
+                {
+                    gb_backspace(_editor);
+                    i--;
+                }
+            }
+            _editor->dirty++;
+        }
+        
         if (IsKeyPressed(KEY_S) && x == 0)
         {
             current_mode = SEARCHING_MODE;
@@ -848,21 +896,21 @@ void input_processing(editor *_editor, editor *_searching_e)
             char c = 0;
             if (current_line->gap_start != 0)
             {
-                if ((strchr("*.\"\\( ", current_line->buffer[current_line->gap_start]) != NULL &&
+                if ((strchr("[]{}*.\"\\() ", current_line->buffer[current_line->gap_start]) != NULL &&
                     !isupper(current_line->buffer[current_line->gap_start + 1])))
                 {
                     c = toupper(current_line->buffer[current_line->gap_start + 1]);
                     gb_move_right(current_line);
                     goto CAPITALIZE;
                 }
-                if ((strchr("*.\"\\( ", current_line->buffer[current_line->gap_start - 1]) != NULL &&
+                if ((strchr("[]{}*.\"\\() ", current_line->buffer[current_line->gap_start - 1]) != NULL &&
                     !isupper(current_line->buffer[current_line->gap_start])))
                 {
                     c = toupper(current_line->buffer[current_line->gap_start]);
 CAPITALIZE:
                     gb_move_right(current_line);
                     gb_backspace(_editor);
-                    gb_insert(_editor, c);
+                    gb_insert(&_editor->gbs[_editor->current_line], c);
                     goto ALT_FOWARD;
                 }
             } else
@@ -873,12 +921,16 @@ CAPITALIZE:
                     goto CAPITALIZE;
                 }
             }
+            _editor->dirty++;
         }
         
         if (current_mode == NORMAL_MODE)
         {
             if (IsKeyPressed(KEY_M))
+            {
                 gb_insert_line(_editor);
+                _editor->dirty++;
+            }
             
             if (IsKeyPressed(KEY_A))
             {
@@ -944,7 +996,7 @@ CAPITALIZE:
             int index = _editor->gbs[_editor->current_line].gap_start;
             if (index > 0)
             {
-                for (; strchr("*#.-\"'/\\(; ", current_line->buffer[index - 2]) == NULL && index > 0;)
+                for (; strchr("[]{}*#.-\"'/\\(); ", current_line->buffer[index - 2]) == NULL && index > 0;)
                     --index;
                 gb_move_to_index(current_line, index - 1);
             }
@@ -962,7 +1014,7 @@ ALT_FOWARD:
             int index = _editor->gbs[_editor->current_line].gap_start;
             if (index < gb_size(current_line))
             {
-                for (; strchr("*#.-\"'/\\(; ", current_line->buffer[index + 2]) == NULL && index < gb_size(current_line);)
+                for (; strchr("[]{}*#.-\"'/\\(); ", current_line->buffer[index + 2]) == NULL && index < gb_size(current_line);)
                     ++index;
                 gb_move_to_index(current_line, index + 2);
             }
@@ -1005,6 +1057,7 @@ void save_file(const char *_filepath, editor *_editor)
         
         free(tmp);
     }
+    _editor->dirty = 0;
     fclose(file);
     printf("'%s' saved sucessfully.\n", _filepath);
     return;
@@ -1127,6 +1180,12 @@ void main_loop(editor *_editor, editor *_searching_editor)
             EndMode2D();
             gui_rendering(_editor, _searching_editor, _editor->editor_font);
         EndDrawing();
+//        printf("%d\n", _editor->dirty);
+        if (_editor->dirty >= 350)
+        {
+            save_file(_editor->current_file, _editor);
+            _editor->dirty = 0;
+        }
     }
     return;
 }
